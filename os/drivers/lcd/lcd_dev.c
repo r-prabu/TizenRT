@@ -67,6 +67,7 @@
 #include <tinyara/fs/fs.h>
 #include <tinyara/fs/ioctl.h>
 #include <tinyara/lcd/lcd_dev.h>
+#include <tinyara/common_logs/common_logs.h>
 
 #define MAX_NO_PLANES 3
 /****************************************************************************
@@ -310,7 +311,7 @@ static int lcddev_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
 	}
 	break;
 	default: {
-		lcddbg("ERROR: Unsupported IOCTL command: %d\n", cmd);
+		lcddbg("%s %d \n", clog_message_str[CMN_LOG_INVALID_VAL],cmd);
 		ret = -ENOSYS;
 	}
 	break;
