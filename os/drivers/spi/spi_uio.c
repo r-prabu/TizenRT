@@ -22,6 +22,7 @@
  ****************************************************************************/
 
 #include <tinyara/config.h>
+#include <tinyara/common_logs/common_logs.h>
 #include <stdio.h>
 #include <assert.h>
 #include <errno.h>

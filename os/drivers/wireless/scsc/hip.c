@@ -22,6 +22,7 @@
 #include "sap.h"
 #include "utils_scsc.h"
 #include <tinyara/config.h>
+#include <tinyara/common_logs/common_logs.h>
 
 #include <sys/types.h>
 #include <sys/time.h>
