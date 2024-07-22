@@ -17,6 +17,7 @@
  ****************************************************************************/
 
 #include <tinyara/config.h>
+#include <tinyara/common_logs/common_logs.h>
 #include <sys/types.h>
 #include <stdbool.h>
 #include <string.h>
