@@ -260,7 +260,7 @@ void bt_keys_add_type(FAR struct bt_keys_s *keys, int type)
 		break;
 
 	default:
-		ndbg("ERROR: Unknown key type %d\n", type);
+		ndbg("%s %d\n", clog_message_str[CMN_LOG_FAILED_OP], type);
 		return;
 	}
 

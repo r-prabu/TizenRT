@@ -64,6 +64,7 @@
 #endif
 #endif
 #include <tinyara/mm/mm.h>
+#include <tinyara/common_logs/common_logs.h>
 
 #ifdef CONFIG_DEBUG_MM_HEAPINFO
 #include  <tinyara/sched.h>

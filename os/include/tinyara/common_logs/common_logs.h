@@ -36,6 +36,7 @@ typedef enum
 	CMN_LOG_END,
 	CMN_LOG_INVALID_DATA,
 	CMN_LOG_VALID_DATA,
+	CMN_LOG_NOT_SUPPORTED,
 
 	CMN_LOG_MSG_MAX	
 
@@ -79,4 +80,5 @@ static const char* clog_message_str[CMN_LOG_MSG_MAX] =
 	"End of :",			//CMN_LOG_END,
 	"Invalid data in :",		//CMN_LOG_INVALID_DATA
 	"Valid data in :",		//CMN_LOG_VALID_DATA
+	"Not supported ",      //CMN_LOG_NOT_SUPPORTED
 };
