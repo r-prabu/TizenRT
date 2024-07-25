@@ -75,6 +75,7 @@
 #include <tinyara/fs/procfs.h>
 #include <tinyara/fs/dirent.h>
 #include <tinyara/clock.h>
+#include <tinyara/common_logs/common_logs.h>
 
 #include <tinyara/pm/pm.h>
 
@@ -206,7 +207,7 @@ static int power_find_dirref(FAR const char *relpath, FAR struct power_dir_s *di
 	/* Skip the "power/domains" portion of relpath. We accept it only now */
 	len = strlen(POWER_SUBDIRPATH_DOMAINS);
 	if (strncmp(relpath, POWER_SUBDIRPATH_DOMAINS, len) != 0) {
-		fdbg("Invalid Path : Failed to find path %s \n", relpath);
+		fdbg("%s path %s \n", clog_message_str[CMN_LOG_FAILED_OP], relpath);
 		return -ENOENT;
 	}
 	relpath += len;
@@ -227,7 +228,7 @@ static int power_find_dirref(FAR const char *relpath, FAR struct power_dir_s *di
 	str = NULL;
 
 	if (!str) {
-		fdbg("ERROR: Invalid path \"%s\"\n", relpath);
+		fdbg("%s path \"%s\"\n", clog_message_str[CMN_LOG_FAILED_OP], relpath);
 		return -ENOENT;
 	}
 
@@ -364,7 +365,7 @@ static int power_open(FAR struct file *filep, FAR const char *relpath, int oflag
 	/* Allocate a container to hold the task and attribute selection */
 	priv = (FAR struct power_file_s *)kmm_malloc(sizeof(struct power_file_s));
 	if (!priv) {
-		fdbg("ERROR: Failed to allocate file attributes\n");
+		fdbg("%s \n",clog_message_str[CMN_LOG_ALLOC_FAIL]);
 		return -ENOMEM;
 	}
 
@@ -493,7 +494,7 @@ static int power_dup(FAR const struct file *oldp, FAR struct file *newp)
 
 	newfile = (FAR struct power_file_s *)kmm_malloc(sizeof(struct power_file_s));
 	if (!newfile) {
-		fdbg("ERROR: Failed to allocate file container\n");
+		fdbg("%s \n",clog_message_str[CMN_LOG_ALLOC_FAIL]);
 		return -ENOMEM;
 	}
 
@@ -529,7 +530,7 @@ static int power_opendir(FAR const char *relpath, FAR struct fs_dirent_s *dir)
 	powerdir = (FAR struct power_dir_s *)kmm_malloc(sizeof(struct power_dir_s));
 
 	if (!powerdir) {
-		fdbg("ERROR: Failed to allocate the directory structure\n");
+		fdbg("%s \n",clog_message_str[CMN_LOG_ALLOC_FAIL]);
 		return -ENOMEM;
 	}
 
