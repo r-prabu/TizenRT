@@ -78,6 +78,7 @@
 #include <tinyara/fs/dirent.h>
 #include <tinyara/fs/ioctl.h>
 #include <tinyara/fs/smart_procfs.h>
+#include <tinyara/common_logs/common_logs.h>
 
 #include <arch/irq.h>
 #include "smartfs.h"
@@ -346,7 +347,8 @@ static int smartfs_open(FAR struct file *filep, FAR const char *relpath, int ofl
 	 * REVISIT:  Write-able proc files could be quite useful.
 	 */
 	if (((oflags & O_WRONLY) != 0 || (oflags & O_RDONLY) == 0) && (!filep->f_inode->u.i_mops->write)) {
-		fdbg("ERROR: Only O_RDONLY supported\n");
+		/*Only O_RDONLY supported*/
+		fdbg("%s\n", clog_message_str[CMN_LOG_NOT_SUPPORTED]);
 		return -EACCES;
 	}
 
@@ -354,7 +356,8 @@ static int smartfs_open(FAR struct file *filep, FAR const char *relpath, int ofl
 
 	priv = (FAR struct smartfs_file_s *)kmm_malloc(sizeof(struct smartfs_file_s));
 	if (!priv) {
-		fdbg("ERROR: Failed to allocate file attributes\n");
+		/*Failed to allocate file attributes*/
+		fdbg("%s\n", clog_message_str[CMN_LOG_ALLOC_FAIL]);
 		return -ENOMEM;
 	}
 
@@ -492,7 +495,8 @@ static int smartfs_dup(FAR const struct file *oldp, FAR struct file *newp)
 
 	newpriv = (FAR struct smartfs_file_s *)kmm_malloc(sizeof(struct smartfs_file_s));
 	if (!newpriv) {
-		fdbg("ERROR: Failed to allocate file attributes\n");
+		/*Failed to allocate file attributes*/
+		fdbg("%s\n", clog_message_str[CMN_LOG_ALLOC_FAIL]);
 		return -ENOMEM;
 	}
 
@@ -530,7 +534,8 @@ static int smartfs_opendir(FAR const char *relpath, FAR struct fs_dirent_s *dir)
 			 kmm_malloc(sizeof(struct smartfs_level1_s));
 
 	if (!level1) {
-		fdbg("ERROR: Failed to allocate the level1 directory structure\n");
+		/*Failed to allocate the level1 directory structure*/
+		fdbg("%s\n", clog_message_str[CMN_LOG_ALLOC_FAIL]);
 		return -ENOMEM;
 	}
 
