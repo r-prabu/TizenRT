@@ -59,6 +59,7 @@
 #include <errno.h>
 
 #include <tinyara/mm/mm.h>
+#include <tinyara/common_logs/common_logs.h>
 
 #ifdef CONFIG_MM_KERNEL_HEAP
 

@@ -118,19 +118,19 @@ int pm_sleep(int milliseconds)
 	rtcb->waitdog = wd_create();
 	if (!rtcb->waitdog) {
 		set_errno(EAGAIN);
-		pmdbg("Error creating wdog timer\n");
+		pmdbg("%s #1\n", clog_message_str[CMN_LOG_FAILED_OP]);
 		goto errout;
 	}
 	/* set this timer as wakeup source */
 	if (wd_setwakeupsource(rtcb->waitdog) != OK) {
-		pmdbg("Error setting wakeup flag to wdog timer\n");
+		pmdbg("%s #2\n", clog_message_str[CMN_LOG_FAILED_OP]);
 		wd_delete(rtcb->waitdog);
 		goto errout;
 	}
 	/* before going into sleep start the wakeup timer */
 	ret = wd_start(rtcb->waitdog, MSEC2TICK(milliseconds), (wdentry_t)pm_timer_callback, 1, (uint32_t)&pm_sem);
 	if (ret != OK) {
-		pmdbg("pm_sleep: wd_start failed\n");
+		pmdbg("%s #3\n", clog_message_str[CMN_LOG_FAILED_OP]);
 		wd_delete(rtcb->waitdog);
 		goto errout;
 	}
