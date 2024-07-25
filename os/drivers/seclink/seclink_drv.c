@@ -221,7 +221,7 @@ int se_unregister(FAR struct sec_lowerhalf_s *lower)
 	}
 
 	if (!upper->path) {
-		dbg("%s\n"), clog_message_str[CMN_LOG_NULL_CHECK_FAIL];
+		dbg("%s\n", clog_message_str[CMN_LOG_NULL_CHECK_FAIL]);
 		assert(0);
 	}
 

@@ -34,7 +34,7 @@
 #include <tinyara/kmalloc.h>
 #include <tinyara/sched.h>
 #include <tinyara/sched_note.h>
-
+#include  <tinyara/common_logs/common_logs.h>
 #include "group/group.h"
 #include "sched/sched.h"
 #include "init/init.h"

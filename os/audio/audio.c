@@ -73,6 +73,7 @@
 #include <tinyara/fs/fs.h>
 #include <tinyara/arch.h>
 #include <tinyara/audio/audio.h>
+#include <tinyara/common_logs/common_logs.h>
 
 #include <arch/irq.h>
 
@@ -884,7 +885,7 @@ static void audio_callback(FAR void *handle, uint16_t reason, FAR struct ap_buff
 	break;
 
 	default: {
-		auddbg("ERROR: Unknown callback reason code %d\n", reason);
+		auddbg("%s %d\n", clog_message_str[CMN_LOG_FAILED_OP], reason);
 		break;
 	}
 	}
@@ -938,7 +939,7 @@ int audio_register(FAR const char *name, FAR struct audio_lowerhalf_s *dev)
 
 	upper = (FAR struct audio_upperhalf_s *)kmm_zalloc(sizeof(struct audio_upperhalf_s));
 	if (!upper) {
-		auddbg("ERROR: Allocation failed\n");
+		auddbg("%s\n", clog_message_str[CMN_LOG_ALLOC_FAIL]);
 		return -ENOMEM;
 	}
 
@@ -990,7 +991,7 @@ int audio_register(FAR const char *name, FAR struct audio_lowerhalf_s *dev)
 
 			ret = mkdir(path, 0644);
 			if (ret < 0) {
-				auddbg("ERROR: mkdir failed\n");
+				auddbg("%s %s \n", clog_message_str[CMN_LOG_FILE_OPEN_ERROR], path);
 				kmm_free(upper);
 				return ret;
 			}
@@ -1031,7 +1032,7 @@ int audio_register(FAR const char *name, FAR struct audio_lowerhalf_s *dev)
 
 		ret = mkdir(devname, 0644);
 		if (ret < 0) {
-			auddbg("ERROR: mkdir failed\n");
+			auddbg("%s %s \n", clog_message_str[CMN_LOG_FILE_OPEN_ERROR], devname);
 			kmm_free(upper);
 			return ret;
 		}

@@ -143,7 +143,7 @@ int unload_module(FAR struct binary_s *binp)
 		if (binp->unload) {
 			ret = binp->unload(binp);
 			if (ret < 0) {
-				berr("binp->unload() failed: %d\n", ret);
+				berr("%s #1: %d\n", clog_message_str[CMN_LOG_FAILED_OP], ret);
 				return ret;
 			}
 		}
@@ -152,7 +152,7 @@ int unload_module(FAR struct binary_s *binp)
 
 		ret = exec_dtors(binp);
 		if (ret < 0) {
-			berr("exec_ctors() failed: %d\n", ret);
+			berr("%s #2: %d\n", clog_message_str[CMN_LOG_FAILED_OP], ret);
 			return ret;
 		}
 #endif
