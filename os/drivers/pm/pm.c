@@ -145,8 +145,11 @@ static int pm_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
 	default:
 		pmvdbg("%s command\n", clog_message_str[CMN_LOG_INVALID_VAL]);
 		break;
-        }
-        return ret;
+	}
+	if (ret == ERROR) {
+		ret = -get_errno();
+	}
+	return ret;
 }
 
 /****************************************************************************
