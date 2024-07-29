@@ -109,18 +109,18 @@ int bchlib_setup(const char *blkdev, bool readonly, FAR void **handle)
 
 	ret = bch->inode->u.i_bops->geometry(bch->inode, &geo);
 	if (ret < 0) {
-		fdbg("%s#3 %d\n", log_message_str[CMN_LOG_FAILED_OP],-ret);
+		fdbg("%s#3 %d\n", clog_message_str[CMN_LOG_FAILED_OP],-ret);
 		goto errout_with_bch;
 	}
 
 	if (!geo.geo_available) {
-		fdbg("%s#4 %d\n", log_message_str[CMN_LOG_FAILED_OP],-ret);
+		fdbg("%s#4 %d\n", clog_message_str[CMN_LOG_FAILED_OP],-ret);
 		ret = -ENODEV;
 		goto errout_with_bch;
 	}
 
 	if (!readonly && (!bch->inode->u.i_bops->write || !geo.geo_writeenabled)) {
-		fdbg("%s#5 \n", log_message_str[CMN_LOG_FAILED_OP]);
+		fdbg("%s#5 \n", clog_message_str[CMN_LOG_FAILED_OP]);
 		ret = -EACCES;
 		goto errout_with_bch;
 	}
@@ -135,7 +135,7 @@ int bchlib_setup(const char *blkdev, bool readonly, FAR void **handle)
 	/* Allocate the sector I/O buffer */
 	bch->buffer = (FAR uint8_t *)kmm_malloc(bch->sectsize);
 	if (!bch->buffer) {
-		fdbg("%s#6 \n", log_message_str[CMN_LOG_FAILED_OP]);
+		fdbg("%s#6 \n", clog_message_str[CMN_LOG_FAILED_OP]);
 		ret = -ENOMEM;
 		goto errout_with_bch;
 	}
