@@ -72,6 +72,9 @@
 #include <tinyara/arch.h>
 #include <tinyara/lcd/lcd.h>
 #include <tinyara/lcd/ili9341.h>
+#include <tinyara/common_logs/common_logs.h>
+
+
 
 #include <arch/irq.h>
 

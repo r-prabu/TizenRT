@@ -68,6 +68,7 @@
 #include <tinyara/fs/mksmartfs.h>
 #include <tinyara/fs/ioctl.h>
 #include <tinyara/fs/smart.h>
+#include <tinyara/common_logs/common_logs.h>
 
 #include "smartfs.h"
 
@@ -121,13 +122,14 @@ int mksmartfs(FAR const char *pathname, bool force)
 	/* Find the inode of the block driver indentified by 'source' */
 	ret = open_blockdriver(pathname, 0, &inode);
 	if (ret < 0) {
-		fdbg("Failed to open %s\n", pathname);
+		fdbg("%s %s\n", clog_message_str[CMN_LOG_FILE_OPEN_ERROR], pathname);
 		goto errout;
 	}
 
 	/* Make sure that the inode supports the write and geometry methods at a minimum */
 	if (!inode->u.i_bops->write || !inode->u.i_bops->geometry) {
-		fdbg("%s does not support write or geometry methods\n", pathname);
+		/*does not support write or geometry methods*/
+		fdbg("%s %s\n", clog_message_str[CMN_LOG_NOT_SUPPORTED], pathname);
 		ret = -EACCES;
 		goto errout_with_driver;
 	}
@@ -150,14 +152,16 @@ int mksmartfs(FAR const char *pathname, bool force)
 	ret = inode->u.i_bops->ioctl(inode, BIOC_LLFORMAT, 0);
 #endif
 	if (ret != OK) {
-		fdbg("Error creating low-level format: %d\n", ret);
+		/*Error creating low-level format*/
+		fdbg("%s #1 %d\n", clog_message_str[CMN_LOG_FILE_IOCTL_ERROR], ret);
 		goto errout_with_driver;
 	}
 
 	/* Get the format information so we know how big the sectors are */
 	ret = inode->u.i_bops->ioctl(inode, BIOC_GETFORMAT, (unsigned long)&fmt);
 	if (ret != OK) {
-		fdbg("Error getting device low level format: %d\n", ret);
+		/*Error getting device low level format*/
+		fdbg("%s #2 %d\n", clog_message_str[CMN_LOG_FILE_IOCTL_ERROR], ret);
 		goto errout_with_driver;
 	}
 

@@ -74,6 +74,7 @@
 #include <tinyara/audio/cx20921.h>
 #include <tinyara/math.h>
 #include <math.h>
+#include <tinyara/common_logs/common_logs.h>
 
 #include "cx20921.h"
 

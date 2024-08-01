@@ -16,6 +16,7 @@
  *
  ****************************************************************************/
 #include <tinyara/config.h>
+#include <tinyara/common_logs/common_logs.h>
 #include <fcntl.h>
 #include <tinyara/timer.h>
 #include "seclink_drv_utils.h"

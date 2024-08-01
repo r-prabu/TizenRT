@@ -36,6 +36,7 @@
 #include <tinyara/fs/fs.h>
 #include <tinyara/fs/ioctl.h>
 #include <tinyara/fota/fota.h>
+#include <tinyara/common_logs/common_logs.h>
 
 /************************************************************************************
  * Definitions
@@ -85,7 +86,8 @@ static ssize_t fota_write(FAR struct file *filep, FAR const char *buffer, size_t
 	int ret = ERROR;
 
 	if (!g_fota_dev_opened) {
-		dbg(" device is not opened, ret = %d\n", ret);
+		//dbg(" device is not opened, ret = %d\n", ret);
+		dbg("%s %d \n", clog_message_str[CMN_LOG_VALUE_OF],ret);
 		set_errno(EBADF);
 		return ret;
 	}
@@ -108,7 +110,8 @@ static ssize_t fota_read(FAR struct file *filep, FAR char *buffer, size_t buflen
 	int ret = ERROR;
 
 	if (!g_fota_dev_opened) {
-		dbg(" device is not opened, ret = %d\n", ret);
+		//dbg(" device is not opened, ret = %d\n", ret);
+		dbg("%s %d \n", clog_message_str[CMN_LOG_VALUE_OF],ret);
 		set_errno(EBADF);
 		return ret;
 	}
@@ -127,7 +130,8 @@ static int fota_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
 	int ret = ERROR;
 
 	if (!g_fota_dev_opened) {
-		dbg(" device is not opened, ret = %d\n", ret);
+		//dbg(" device is not opened, ret = %d\n", ret);
+		dbg("%s %d \n", clog_message_str[CMN_LOG_VALUE_OF],ret);
 		set_errno(EBADF);
 		return ret;
 	}
@@ -174,7 +178,8 @@ static int fota_close(FAR struct file *filep)
 	FAR fota_dev_t *dev = inode->i_private;
 
 	if (!g_fota_dev_opened) {
-		dbg(" device is not opened, ret = %d\n", ERROR);
+		//dbg(" device is not opened, ret = %d\n", ERROR);
+		dbg("%s %d \n", clog_message_str[CMN_LOG_VALUE_OF],ERROR);
 		set_errno(EBADF);
 		return ERROR;
 	}
@@ -226,7 +231,7 @@ int fota_register(FAR fota_dev_t *dev)
 
 	sem_init(&g_fota_open_sem, 0, 1);
 
-	dbg("Registering %s\n", path);
+	dbg("%s %s\n", clog_message_str[CMN_LOG_VALUE_OF],path);
 
 	if (!dev) {
 		return ERROR;

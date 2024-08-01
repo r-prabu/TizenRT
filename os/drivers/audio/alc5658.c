@@ -79,6 +79,7 @@
 #include <math.h>
 #include <tinyara/i2c.h>
 #include <stdbool.h>
+#include <tinyara/common_logs/common_logs.h>
 
 #include "alc5658.h"
 #include "alc5658scripts.h"
