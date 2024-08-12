@@ -294,7 +294,7 @@ FAR struct bt_buf_s *bt_buf_alloc(enum bt_buf_type_e type, FAR struct iob_s *iob
 			if (buf == NULL) {
 				/* No..  memory not available */
 
-				ndbg("ERROR: Failed to allocate buffer.\n");
+				ndbg("%s\n", clog_message_str[CMN_LOG_ALLOC_FAIL]);
 				return NULL;
 			}
 
@@ -332,7 +332,7 @@ FAR struct bt_buf_s *bt_buf_alloc(enum bt_buf_type_e type, FAR struct iob_s *iob
 
 		buf->frame = iob_alloc(false);
 		if (!buf->frame) {
-			ndbg("ERROR:  Failed to allocate an IOB\n");
+			ndbg("%s IOB\n", clog_message_str[CMN_LOG_ALLOC_FAIL]);
 			bt_buf_release(buf);
 			return NULL;
 		}

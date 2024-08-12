@@ -76,6 +76,7 @@
 #include <tinyara/fs/procfs.h>
 #include <tinyara/fs/dirent.h>
 #include <tinyara/clock.h>
+#include <tinyara/common_logs/common_logs.h>
 
 
 
@@ -273,7 +274,8 @@ static int ereport_open(FAR struct file *filep, FAR const char *relpath, int ofl
 	 */
 
 	if ((oflags & O_WRONLY) != 0 || (oflags & O_RDONLY) == 0) {
-		fdbg("ERROR: Only O_RDONLY supported\n");
+		/*Only O_RDONLY supported*/
+		fdbg("%s\n", clog_message_str[CMN_LOG_NOT_SUPPORTED]);
 		return -EACCES;
 	}
 
@@ -293,7 +295,8 @@ static int ereport_open(FAR struct file *filep, FAR const char *relpath, int ofl
 	/* Allocate a container to hold the domain selection */
 	efile = (FAR struct ereport_file_s *)kmm_zalloc(sizeof(struct ereport_file_s));
 	if (!efile) {
-		fdbg("ERROR: Failed to allocate file container\n");
+		/*Failed to allocate file container*/
+		fdbg("%s\n", clog_message_str[CMN_LOG_ALLOC_FAIL]);
 		return -ENOMEM;
 	}
 
@@ -392,7 +395,8 @@ static int ereport_opendir(FAR const char *relpath, FAR struct fs_dirent_s *dir)
 
 	ereport_dir = (FAR struct ereport_dir_s *)kmm_zalloc(sizeof(struct ereport_dir_s));
 	if (!ereport_dir) {
-		fdbg("ERROR: Failed to allocate the directory structure\n");
+		/*Failed to allocate the directory structure*/
+		fdbg("%s\n", clog_message_str[CMN_LOG_ALLOC_FAIL]);
 		return -ENOMEM;
 	}
 

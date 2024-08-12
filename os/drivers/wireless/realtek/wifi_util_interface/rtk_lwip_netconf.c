@@ -16,6 +16,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include <tinyara/config.h>
+#include <tinyara/common_logs/common_logs.h>
 #include <stdio.h>
 #include <string.h>
 

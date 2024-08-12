@@ -73,6 +73,7 @@
 #ifdef CONFIG_FS_PROCFS
 #include <tinyara/fs/procfs.h>
 #endif
+#include <tinyara/common_logs/common_logs.h>
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -237,7 +238,8 @@ static int part_erase(FAR struct mtd_dev_s *dev, off_t startblock, size_t nblock
 	/* Make sure that erase would not extend past the end of the partition */
 
 	if (!part_blockcheck(priv, (startblock + nblocks - 1) * priv->blkpererase)) {
-		fdbg("ERROR: Erase beyond the end of the partition\n");
+		/*Erase beyond the end of the partition */
+		fdbg("%s\n", clog_message_str[CMN_LOG_INVALID_VAL]);
 		return -ENXIO;
 	}
 
@@ -272,7 +274,8 @@ static ssize_t part_bread(FAR struct mtd_dev_s *dev, off_t startblock, size_t nb
 	/* Make sure that read would not extend past the end of the partition */
 
 	if (!part_blockcheck(priv, startblock + nblocks - 1)) {
-		fdbg("ERROR: Read beyond the end of the partition\n");
+		/*ERROR: Read beyond the end of the partition */
+		fdbg("%s\n", clog_message_str[CMN_LOG_INVALID_VAL]); 
 		return -ENXIO;
 	}
 
@@ -300,7 +303,8 @@ static ssize_t part_bwrite(FAR struct mtd_dev_s *dev, off_t startblock, size_t n
 	/* Make sure that write would not extend past the end of the partition */
 
 	if (!part_blockcheck(priv, startblock + nblocks - 1)) {
-		fdbg("ERROR: Write beyond the end of the partition\n");
+		/*ERROR: Write beyond the end of the partition */
+		fdbg("%s\n", clog_message_str[CMN_LOG_INVALID_VAL]);
 		return -ENXIO;
 	}
 
@@ -332,7 +336,8 @@ static ssize_t part_read(FAR struct mtd_dev_s *dev, off_t offset, size_t nbytes,
 		/* Make sure that read would not extend past the end of the partition */
 
 		if (!part_bytecheck(priv, offset + nbytes - 1)) {
-			fdbg("ERROR: Read beyond the end of the partition\n");
+			/*ERROR: Read beyond the end of the partition*/
+			fdbg("%s\n", clog_message_str[CMN_LOG_INVALID_VAL]);
 			return -ENXIO;
 		}
 
@@ -367,7 +372,8 @@ static ssize_t part_write(FAR struct mtd_dev_s *dev, off_t offset, size_t nbytes
 		/* Make sure that write would not extend past the end of the partition */
 
 		if (!part_bytecheck(priv, offset + nbytes - 1)) {
-			fdbg("ERROR: Write beyond the end of the partition\n");
+			/*ERROR: Write beyond the end of the partition*/
+			fdbg("%s\n", clog_message_str[CMN_LOG_INVALID_VAL]);
 			return -ENXIO;
 		}
 
@@ -479,7 +485,7 @@ static int part_procfs_open(FAR struct file *filep, FAR const char *relpath, int
 
 	attr = (FAR struct part_procfs_file_s *)kmm_zalloc(sizeof(struct part_procfs_file_s));
 	if (!attr) {
-		fdbg("ERROR: Failed to allocate file attributes\n");
+		fdbg("%s\n", clog_message_str[CMN_LOG_ALLOC_FAIL]);
 		return -ENOMEM;
 	}
 
@@ -555,7 +561,7 @@ static ssize_t part_procfs_read(FAR struct file *filep, FAR char *buffer, size_t
 		/* Get the geometry of the FLASH device */
 		ret = attr->nextpart->parent->ioctl(attr->nextpart->parent, MTDIOC_GEOMETRY, (unsigned long)((uintptr_t)&geo));
 		if (ret < 0) {
-			fdbg("ERROR: mtd->ioctl failed: %d\n", ret);
+			fdbg("%s : %d\n", clog_message_str[CMN_LOG_FILE_IOCTL_ERROR], ret);
 			return 0;
 		}
 
@@ -631,7 +637,7 @@ static int part_procfs_dup(FAR const struct file *oldp, FAR struct file *newp)
 
 	newattr = (FAR struct part_procfs_file_s *)kmm_zalloc(sizeof(struct part_procfs_file_s));
 	if (!newattr) {
-		fdbg("ERROR: Failed to allocate file attributes\n");
+		fdbg("%s\n",clog_message_str[CMN_LOG_ALLOC_FAIL]);
 		return -ENOMEM;
 	}
 
@@ -712,7 +718,7 @@ FAR struct mtd_dev_s *mtd_partition(FAR struct mtd_dev_s *mtd, off_t firstblock,
 
 	ret = mtd->ioctl(mtd, MTDIOC_GEOMETRY, (unsigned long)((uintptr_t)&geo));
 	if (ret < 0) {
-		fdbg("ERROR: mtd->ioctl failed: %d\n", ret);
+		fdbg("%s: %d\n", clog_message_str[CMN_LOG_FILE_IOCTL_ERROR], ret);
 		return NULL;
 	}
 
@@ -749,7 +755,7 @@ FAR struct mtd_dev_s *mtd_partition(FAR struct mtd_dev_s *mtd, off_t firstblock,
 
 	part = (FAR struct mtd_partition_s *)kmm_zalloc(sizeof(struct mtd_partition_s));
 	if (!part) {
-		fdbg("ERROR: Failed to allocate memory for the partition device\n");
+		fdbg("%s\n", clog_message_str[CMN_LOG_ALLOC_FAIL]);
 		return NULL;
 	}
 
