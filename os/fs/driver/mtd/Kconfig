@@ -331,4 +331,14 @@ config JEDEC_SLOWREAD
 	default n
 endif
 
+if MTD_XT26GX
+config XT26GX_SPIMODE
+	int "SPI Mode"
+	default 0
+
+config XT26GX_SPI_FREQUENCY
+	INT "SPI Frequency"
+	default 20000000
+endif
+
 endif # MTD

@@ -323,7 +323,6 @@ void amebasmart_mount_partitions(void)
 	int ret;
 	struct mtd_dev_s *mtd;
 	partition_info_t partinfo;
-
 	mtd = (FAR struct mtd_dev_s *)mtd_initialize();
 	/* Configure mtd partitions */
 	ret = configure_mtd_partitions(mtd, 0, &partinfo);
@@ -352,6 +351,14 @@ void amebasmart_mount_partitions(void)
 		lldbg("w25 Init failed\n");
 		return;
 	}
+
+#elif defined(CONFIG_MTD_XT26GX)
+	lldbg(" before xt26gx_initialize start \n");
+	mtd = xt26gx_initialize(spi);
+	if (mtd == NULL) {
+		lldbg("xt26gx Init failed\n");
+		return;
+	}
 #endif
 	ret = configure_mtd_partitions(mtd, 1, &partinfo);
 	if (ret != OK) {
@@ -359,7 +366,7 @@ void amebasmart_mount_partitions(void)
 		return;
 	}
 #ifdef CONFIG_AUTOMOUNT
-	automount_fs_partition(&partinfo);
+	//automount_fs_partition(&partinfo);
 #endif
 #endif /* end of CONFIG_SECOND_FLASH_PARTITION */
 }
