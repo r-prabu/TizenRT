@@ -40,9 +40,11 @@
 #include <tinyara/math.h>
 #include <math.h>
 #include <tinyara/i2c.h>
+#include <sys/stat.h>
 
+#include "codec_parser.h"
 #include "syu645b.h"
-#include "syu645bscripts.h"
+// #include "syu645bscripts.h"
 #ifdef CONFIG_PM
 #include <tinyara/pm/pm.h>
 #endif
@@ -112,29 +114,62 @@ static struct pm_callback_s g_pm_syu645b_cb ={
  *
  ************************************************************************************/
 
-static int syu645b_exec_i2c_script(FAR struct syu645b_dev_s *priv, t_codec_init_script_entry *script, uint32_t size)
-{
-	uint32_t i;
+// static int syu645b_exec_i2c_script(FAR struct syu645b_dev_s *priv, t_codec_init_script_entry *script, uint32_t size)
+// {
+// 	uint32_t i;
+// 	uint16_t ret = 0;
+// 	uint8_t reg[SYU645B_REG_DATA_TYPE_MAX];
+// 	FAR struct i2c_dev_s *dev = priv->i2c;
+// 	FAR struct i2c_config_s *syu645b_i2c_config = &(priv->lower->i2c_config);
+
+// 	for (i = 0; i < size; i++) {
+// 		reg[0] = script[i].addr;
+// 		for (int j = 1; j < script[i].type; j++) {
+// 			reg[j] = script[i].val[j - 1];
+// 		}
+// 		ret = i2c_write(dev, syu645b_i2c_config, (uint8_t *)reg, script[i].type);
+// 		if (ret < script[i].type) {
+// 			auddbg("Error, cannot write to reg addr 0x%x, ret = %d\n", script[i].addr, ret);
+// 			break;
+// 		}
+// 		if (script[i].delay > 0) {
+// 			up_mdelay(script[i].delay);
+// 		}
+// 	}
+// 	return ret;
+// }
+
+/** * Apply script to codec */ 
+static int syu645b_apply_script(FAR struct syu645b_dev_s *priv, uint8_t script_id)
+{ 
 	uint16_t ret = 0;
-	uint8_t reg[SYU645B_REG_DATA_TYPE_MAX];
 	FAR struct i2c_dev_s *dev = priv->i2c;
 	FAR struct i2c_config_s *syu645b_i2c_config = &(priv->lower->i2c_config);
+	uint8_t reg[SYU645B_REG_DATA_TYPE_MAX];
 
-	for (i = 0; i < size; i++) {
-		reg[0] = script[i].addr;
-		for (int j = 1; j < script[i].type; j++) {
-			reg[j] = script[i].val[j - 1];
+    codec_script_t *script = syu645b_find_script(script_id); 
+    if (script == NULL) { 
+        return -EINVAL; 
+    }
+
+    for (int i = 0; i < script->entry_count; i++) { 
+        script_entry_t *entry = &script->entries[i]; 
+        /* Write register address and values */ 
+		reg[0] = entry->addr;
+		for (int j = 1; j < entry->type; j++) { 
+				reg[j] = entry->values[j-1];
 		}
-		ret = i2c_write(dev, syu645b_i2c_config, (uint8_t *)reg, script[i].type);
-		if (ret < script[i].type) {
-			auddbg("Error, cannot write to reg addr 0x%x, ret = %d\n", script[i].addr, ret);
-			break;
+        ret = i2c_write(dev, syu645b_i2c_config, (uint8_t *)reg, entry->type);
+		if(ret < entry->type) {
+				auddbg("Error, cannot write to reg addr 0x%x, ret = %d\n", entry->addr, ret);
+				break;
 		}
-		if (script[i].delay > 0) {
-			up_mdelay(script[i].delay);
-		}
-	}
-	return ret;
+        /* Apply delay if needed */ 
+        if (entry->delay > 0) { 
+            up_mdelay(entry->delay * 1000); 
+        }
+    }
+    return OK; 
 }
 
 static int syu645b_readreg_nbyte(FAR struct syu645b_dev_s *priv, uint8_t regaddr, uint8_t *regval, int nbytes)
@@ -186,9 +221,11 @@ static void syu645b_setmute(FAR struct syu645b_dev_s *priv, bool mute)
 {
 	audvdbg("mute : %d\n", mute);
 	if (mute) {
-		syu645b_exec_i2c_script(priv, codec_init_mute_on_script, sizeof(codec_init_mute_on_script) / sizeof(t_codec_init_script_entry));
+		syu645b_apply_script(priv, SCRIPT_ID_MUTE_ON);
+		// syu645b_exec_i2c_script(priv, codec_init_mute_on_script, sizeof(codec_init_mute_on_script) / sizeof(t_codec_init_script_entry));
 	} else{
-		syu645b_exec_i2c_script(priv, codec_init_mute_off_script, sizeof(codec_init_mute_off_script) / sizeof(t_codec_init_script_entry));
+		syu645b_apply_script(priv, SCRIPT_ID_MUTE_OFF);
+		// syu645b_exec_i2c_script(priv, codec_init_mute_off_script, sizeof(codec_init_mute_off_script) / sizeof(t_codec_init_script_entry));
 	}
 }
 
@@ -213,14 +250,23 @@ static void syu645b_setvolume(FAR struct syu645b_dev_s *priv)
 	uint16_t val = (int)(bound + SYU645B_HW_VOL_MIN_BOUND);
 	audvdbg("volume = %d val : %d mute=%u\n", priv->volume, val, priv->mute);
 
+	codec_script_t *script = syu645b_find_script(SCRIPT_ID_VOLUME);
+	if (script == NULL) {
+			audvdbg("Not finding the volume field \n");
+        	return; 
+    }
+	script_entry_t *entry = &script->entries[0];
 	if (priv->volume == 0) {
-		codec_set_master_volume_script[0].val[0] = 0;
+		entry->values[0] = 0;
+		// codec_set_master_volume_script[0].val[0] = 0;
 	} else {
 		/* Linear approximation is done to convert media volume to hardware volume */
-		codec_set_master_volume_script[0].val[0] = val;
+		entry->values[0] = val;
+		// codec_set_master_volume_script[0].val[0] = val;
 	}
 	syu645b_setmute(priv, false);
-	syu645b_exec_i2c_script(priv, codec_set_master_volume_script, sizeof(codec_set_master_volume_script) / sizeof(t_codec_init_script_entry));
+	syu645b_apply_script(priv, SCRIPT_ID_VOLUME);
+	// syu645b_exec_i2c_script(priv, codec_set_master_volume_script, sizeof(codec_set_master_volume_script) / sizeof(t_codec_init_script_entry));
 }
 #endif                                                  /* CONFIG_AUDIO_EXCLUDE_VOLUME */
 
@@ -482,13 +528,17 @@ static int syu645b_configure(FAR struct audio_lowerhalf_s *dev, FAR const struct
 		syu645b_set_i2s_datawidth(priv);
 
 		if (priv->samprate == AUDIO_SAMP_RATE_32K) {
-			syu645b_exec_i2c_script(priv, codec_set_samprate_32k_script, sizeof(codec_set_samprate_32k_script) / sizeof(t_codec_init_script_entry));
+			syu645b_apply_script(priv, SCRIPT_ID_RATE_32K);
+			// syu645b_exec_i2c_script(priv, codec_set_samprate_32k_script, sizeof(codec_set_samprate_32k_script) / sizeof(t_codec_init_script_entry));
 		} else if (priv->samprate == AUDIO_SAMP_RATE_44K) {
-			syu645b_exec_i2c_script(priv, codec_set_samprate_44k_script, sizeof(codec_set_samprate_44k_script) / sizeof(t_codec_init_script_entry));
+			syu645b_apply_script(priv, SCRIPT_ID_RATE_44K);
+			// syu645b_exec_i2c_script(priv, codec_set_samprate_44k_script, sizeof(codec_set_samprate_44k_script) / sizeof(t_codec_init_script_entry));
 		} else if (priv->samprate == AUDIO_SAMP_RATE_48K) {
-			syu645b_exec_i2c_script(priv, codec_set_samprate_48k_script, sizeof(codec_set_samprate_48k_script) / sizeof(t_codec_init_script_entry));
+			syu645b_apply_script(priv, SCRIPT_ID_RATE_48K);
+			// syu645b_exec_i2c_script(priv, codec_set_samprate_48k_script, sizeof(codec_set_samprate_48k_script) / sizeof(t_codec_init_script_entry));
 		} else if (priv->samprate == AUDIO_SAMP_RATE_96K) {
-			syu645b_exec_i2c_script(priv, codec_set_samprate_96k_script, sizeof(codec_set_samprate_96k_script) / sizeof(t_codec_init_script_entry));
+			syu645b_apply_script(priv, SCRIPT_ID_RATE_96K);
+			// syu645b_exec_i2c_script(priv, codec_set_samprate_96k_script, sizeof(codec_set_samprate_96k_script) / sizeof(t_codec_init_script_entry));
 		} else {
 			auddbg("ERROR: Unsupported sample rate: %d\n", priv->samprate);
 		}
@@ -533,7 +583,8 @@ static int syu645b_shutdown(FAR struct audio_lowerhalf_s *dev)
 
 	if (priv->running) {
 		I2S_STOP(priv->i2s, I2S_TX);
-		syu645b_exec_i2c_script(priv, codec_stop_script, sizeof(codec_stop_script) / sizeof(t_codec_init_script_entry));
+		syu645b_apply_script(priv, SCRIPT_ID_STOP);
+		// syu645b_exec_i2c_script(priv, codec_stop_script, sizeof(codec_stop_script) / sizeof(t_codec_init_script_entry));
 		priv->running = false;
 	}
 	priv->paused = false;
@@ -948,9 +999,11 @@ static int syu645b_release(FAR struct audio_lowerhalf_s *dev)
 	syu645b_takesem(&priv->devsem);
 	if (priv->running) {
 		I2S_STOP(priv->i2s, I2S_TX);
-		syu645b_exec_i2c_script(priv, codec_stop_script, sizeof(codec_stop_script) / sizeof(t_codec_init_script_entry));
+		syu645b_apply_script(priv, SCRIPT_ID_STOP);
+		// syu645b_exec_i2c_script(priv, codec_stop_script, sizeof(codec_stop_script) / sizeof(t_codec_init_script_entry));
 		priv->running = false;
 	}
+	syu645b_free_resource();
 	priv->reserved = false;
 	syu645b_givesem(&priv->devsem);
 
@@ -984,7 +1037,8 @@ static void syu645b_reset_config(FAR struct syu645b_dev_s *priv)
 	/* Software reset.	This puts all SYU645B registers back in their
 	 * default state.
 	 */
-	(void)syu645b_exec_i2c_script(priv, codec_initial_script, sizeof(codec_initial_script) / sizeof(t_codec_init_script_entry));
+	(void)syu645b_apply_script(priv, SCRIPT_ID_INIT);
+	// (void)syu645b_exec_i2c_script(priv, codec_initial_script, sizeof(codec_initial_script) / sizeof(t_codec_init_script_entry));
 
 	/*
 	 * TODO : once setting i2s sample rate and data width is fixed by realtek, will uncomment the code,
@@ -1038,8 +1092,10 @@ static void syu645b_set_equalizer(FAR struct syu645b_dev_s *priv, uint32_t prese
 	/* Reset First */
 	syu645b_reset_config(priv);
 
+	
 	/* And then Set default EQ Set */
-	(void)syu645b_exec_i2c_script(priv, t_codec_dq_preset_0_script, sizeof(t_codec_dq_preset_0_script) / sizeof(t_codec_init_script_entry));
+	(void)syu645b_apply_script(priv, SCRIPT_ID_DQ_PRESET);
+	// (void)syu645b_exec_i2c_script(priv, t_codec_dq_preset_0_script, sizeof(t_codec_dq_preset_0_script) / sizeof(t_codec_init_script_entry));
 	priv->max_volume = 0xFF;
 
 	/* And then setVolume Again */
@@ -1138,7 +1194,7 @@ static int syu645b_pm_prepare(struct pm_callback_s *cb, enum pm_state_e state)
  ****************************************************************************/
 FAR struct audio_lowerhalf_s *syu645b_initialize(FAR struct i2c_dev_s *i2c, FAR struct i2s_dev_s *i2s, FAR struct syu645b_lower_s *lower)
 {
-
+	int ret;
 	FAR struct syu645b_dev_s *priv;
 	/* Sanity check */
 	DEBUGASSERT(i2c && lower && i2s);
@@ -1163,6 +1219,20 @@ FAR struct audio_lowerhalf_s *syu645b_initialize(FAR struct i2c_dev_s *i2c, FAR 
 	sem_init(&priv->devsem, 0, 1);
 	sq_init(&priv->pendq);
 
+	char *path  = "/mnt/my_config.bin";
+	struct stat st;
+
+	ret = stat(path, &st);
+	if (ret != OK) {
+		printf("invalid path : %s\n", path);
+		// return false;
+	}
+	DEBUGASSERT(ret == OK);
+	ret = syu645b_load_resource("my_config.bin");
+	if(ret != OK){
+		audllwdbg("Failed to load the config\n");
+	}
+	DEBUGASSERT(ret == OK);
 	/* Software reset.  This puts all SYU645B registers back in their
 	 * default state.
 	 */
@@ -1181,7 +1251,7 @@ FAR struct audio_lowerhalf_s *syu645b_initialize(FAR struct i2c_dev_s *i2c, FAR 
 	/* only used during pm callbacks */
 	g_syu645b = priv;
 
-	int ret = pm_register(&g_pm_syu645b_cb);
+	ret = pm_register(&g_pm_syu645b_cb);
 	DEBUGASSERT(ret == OK);
 #endif	
 
