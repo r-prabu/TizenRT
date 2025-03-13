@@ -1003,7 +1003,8 @@ static int syu645b_release(FAR struct audio_lowerhalf_s *dev)
 		// syu645b_exec_i2c_script(priv, codec_stop_script, sizeof(codec_stop_script) / sizeof(t_codec_init_script_entry));
 		priv->running = false;
 	}
-	syu645b_free_resource();
+	lldbg("syu645b_release called \n");
+	// syu645b_free_resource();
 	priv->reserved = false;
 	syu645b_givesem(&priv->devsem);
 
@@ -1219,19 +1220,22 @@ FAR struct audio_lowerhalf_s *syu645b_initialize(FAR struct i2c_dev_s *i2c, FAR 
 	sem_init(&priv->devsem, 0, 1);
 	sq_init(&priv->pendq);
 
-	char *path  = "/mnt/my_config.bin";
+	char *path  = "/mnt/syu645b_config.bin";
 	struct stat st;
 
 	ret = stat(path, &st);
 	if (ret != OK) {
-		printf("invalid path : %s\n", path);
+		lldbg("invalid path : %s\n", path);
 		// return false;
 	}
+	// sleep(1000);
 	DEBUGASSERT(ret == OK);
-	ret = syu645b_load_resource("my_config.bin");
+	ret = syu645b_load_resource("/mnt/syu645b_config.bin");
 	if(ret != OK){
-		audllwdbg("Failed to load the config\n");
+		audllwdbg("Failed to load the config \n");
 	}
+	lldbg("Founf the file %s \n", path);
+	// sleep(10000);
 	DEBUGASSERT(ret == OK);
 	/* Software reset.  This puts all SYU645B registers back in their
 	 * default state.

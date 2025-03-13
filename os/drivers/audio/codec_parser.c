@@ -3,7 +3,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
-
+#include <dirent.h>
 #include <unistd.h>
 // #include <stdio.h>
 #include <stdlib.h>
@@ -134,14 +134,60 @@ static void dump_config(const uint8_t *buffer)
     }
 }
 
+/**
+ * Get file size using lseek
+ */
+static off_t get_file_size(int fd)
+{
+    off_t current_pos, size;
+    
+    /* Save current position */
+    current_pos = lseek(fd, 0, SEEK_CUR);
+    if (current_pos < 0) {
+        lldbg("lseek to start failed \n");
+        return -1;
+    }
+    
+    /* Seek to end to get size */
+    size = lseek(fd, 0, SEEK_END);
+    if (size < 0) {
+        lldbg("lseek to end failed \n");
+        return -1;
+    }
+    
+    /* Restore original position */
+    if (lseek(fd, current_pos, SEEK_SET) < 0) {
+        lldbg("lseek restore failed \n");
+        return -1;
+    }
+    
+    return size;
+}
+
 /** * Load and parse SYU645B resource file */ 
 int syu645b_load_resource(const char *filename)
 { 
+    int i,j;
     int fd; 
     int ret = OK; 
     uint8_t *buffer = NULL; 
     size_t filesize; 
-    struct stat st; 
+    struct stat st;
+
+    char *path  = "/mnt";
+
+    DIR *dir = opendir(path);
+    if (!dir) {
+        lldbg("Error opening directory %s (%s)\n", path, strerror(errno));
+        return;
+    }
+    lldbg("\n Listing files in: %s \n", path);
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        lldbg("%s \n", entry->d_name);
+    }
+    closedir(dir);
+
     /* Free previous resource if exists */ 
     if (g_codec_resource != NULL) { 
         syu645b_free_resource(); 
@@ -149,68 +195,150 @@ int syu645b_load_resource(const char *filename)
     /* Open resource file */
     fd = open(filename, O_RDONLY); 
     if (fd < 0) { 
+        lldbg("not able to open resource file %d \n", fd);
         return -ENOENT; 
-    } 
+    }
+    
     /* Get file size */ 
-    if (fstat(fd, &st) < 0) { 
-        ret = -EINVAL; 
-        goto errout_with_fd; 
-    } 
-    filesize = st.st_size; 
+    // if (fstat(fd, &st) < 0) { 
+    //     ret = -EINVAL; 
+    //     goto errout_with_fd; 
+    // }
+    // if(fstat(fd, &st) == 0) {
+    //     lldbg("File mode: %o \n", st.st_mode);
+    //     lldbg("Size of the resource %lld \n", (long long) st.st_size);
+
+    //     if(S_ISREG(st.st_mode)) {
+    //         lldbg("Regular file \n");
+    //     } else if(S_ISDIR(st.st_mode)) {
+    //         lldbg("It is directory \n");
+    //     } else {
+    //         lldbg("Error: Not a regular file \n");
+    //     }
+    // } else {
+    //     ret = -EINVAL; 
+    //     lldbg("Error: in fstat \n");
+    //     goto errout_with_fd;
+    // }
+
+    // if(stat("/mnt/BixbyTermsNotAgreedUX3.mp3", &st) == 0) {
+    //     lldbg("stat : success , Size %lld \n", st.st_size);
+    // } else {
+    //     lldbg("stat : Failure \n");
+    // }
+
+    filesize = get_file_size(fd);
+    lldbg(" File size : %lld \n", (long long)filesize);
+
+    // filesize = st.st_size;
+    /* Verify minimum file size for header */
+    if (filesize < 5) {
+        ret = -EINVAL;
+        goto errout_with_fd;
+    }
+
     /* Read entire file */ 
     buffer = (uint8_t *)kmm_zalloc(filesize); 
     if (buffer == NULL) { 
         ret = -ENOMEM; 
         goto errout_with_fd; 
-    } 
-    if (read(fd, buffer, filesize) != filesize) { 
+    }
+    size_t bytes_read = read(fd, buffer, filesize);
+
+    // for(int id =0; id < bytes_read; id++)
+    // {
+    //     lldbg("%d", buffer[id]);
+    //     if(id % 8 == 0)
+    //     lldbg("\n");
+    // }
+
+// #if 0
+    if (bytes_read != filesize) { 
         ret = -EIO; 
         goto errout_with_buffer; 
-    } 
-    // dump_config(buffer);
-    /* Verify minimum size and magic header */ 
-    if (filesize < 5 || read_uint32(buffer) != SYU645B_MAGIC_HEADER) { 
-        ret = -EINVAL; 
-        goto errout_with_buffer; 
-    } 
+    }
+
+    dump_config(buffer);
+    /* Verify magic header */
+    if (read_uint32(buffer) != SYU645B_MAGIC_HEADER) {
+        ret = -EINVAL;
+        goto errout_with_buffer;
+    }
+   
     /* Allocate resource structure */ 
     g_codec_resource = (codec_resource_t *)kmm_zalloc(sizeof(codec_resource_t)); 
     if (g_codec_resource == NULL) { 
         ret = -ENOMEM; 
         goto errout_with_buffer; 
-    } 
+    }
+
+     /* Initialize resource structure */
+    memset(g_codec_resource, 0, sizeof(codec_resource_t));
+
     /* Parse header */ 
     g_codec_resource->magic = SYU645B_MAGIC_HEADER; 
-    g_codec_resource->script_count = buffer[4]; 
+    g_codec_resource->script_count = buffer[4];
+
+    /* Validate script count */
+    if (g_codec_resource->script_count == 0) {
+        ret = -EINVAL;
+        goto errout_with_resource;
+    }
+
     /* Allocate scripts array */ 
     g_codec_resource->scripts = (codec_script_t *)kmm_zalloc( g_codec_resource->script_count * sizeof(codec_script_t)); 
     if (g_codec_resource->scripts == NULL) { 
         ret = -ENOMEM; 
         lldbg("No memory\n");
         goto errout_with_resource; 
-    } 
+    }
+
+    /* Initialize scripts array */
+    memset(g_codec_resource->scripts, 0, 
+        g_codec_resource->script_count * sizeof(codec_script_t));
+
     /* Parse scripts */ 
-    size_t offset = 5; 
-    /* Start after header and script count */ 
-    for (int i = 0; i < g_codec_resource->script_count; i++) { 
+    size_t offset = 5; /* Start after header and script count */ 
+    for (i = 0; i < g_codec_resource->script_count; i++) { 
         /* Check if we have enough data for script header */ 
         if (offset + 2 > filesize) { 
             ret = -EINVAL; 
             lldbg("Not proper data\n");
-            goto errout_with_scripts; 
+            if(i == 0) 
+            goto errout_with_scripts;
+            else
+            goto errout_with_entries;
         } 
         /* Parse script header */ 
         g_codec_resource->scripts[i].id = buffer[offset++]; 
-        g_codec_resource->scripts[i].entry_count = buffer[offset++]; 
+        g_codec_resource->scripts[i].entry_count = buffer[offset++];
+
+        /* Validate entry count */
+        if (g_codec_resource->scripts[i].entry_count == 0) {
+            ret = -EINVAL;
+            if(i == 0) 
+            goto errout_with_scripts;
+            else
+            goto errout_with_entries;
+        }
+
         /* Allocate entries array */ 
         g_codec_resource->scripts[i].entries = (script_entry_t *)kmm_zalloc( g_codec_resource->scripts[i].entry_count * sizeof(script_entry_t)); 
         if (g_codec_resource->scripts[i].entries == NULL) { 
             ret = -ENOMEM; 
             lldbg("No memory for entries \n");
-            goto errout_with_scripts; 
-        } 
+            if(i == 0)
+            goto errout_with_scripts;
+            else
+            goto errout_with_entries;
+        }
+
+        /* Initialize entries array */
+        memset(g_codec_resource->scripts[i].entries, 0, 
+            g_codec_resource->scripts[i].entry_count * sizeof(script_entry_t));
+
         /* Parse entries */ 
-        for (int j = 0; j < g_codec_resource->scripts[i].entry_count; j++) { 
+        for (j = 0; j < g_codec_resource->scripts[i].entry_count; j++) { 
             /* Check if we have enough data for entry header */ 
             if (offset + 4 > filesize) { 
                 ret = -EINVAL; 
@@ -245,9 +373,9 @@ int syu645b_load_resource(const char *filename)
     return OK; 
 errout_with_entries: 
     /* Free already allocated entries */ 
-    for (int i = 0; i < g_codec_resource->script_count; i++) { 
-        if (g_codec_resource->scripts[i].entries != NULL) { 
-            kmm_free(g_codec_resource->scripts[i].entries); 
+    for (int k = 0; k <= i; k++) { 
+        if (g_codec_resource->scripts[k].entries != NULL) { 
+            kmm_free(g_codec_resource->scripts[k].entries); 
         } 
     } 
 errout_with_scripts: 
@@ -259,7 +387,7 @@ errout_with_resource:
 
 errout_with_buffer: 
     kmm_free(buffer); 
-
+// #endif
 errout_with_fd: 
     close(fd); 
     return ret; 
@@ -271,13 +399,13 @@ void syu645b_free_resource(void)
     if (g_codec_resource != NULL) { 
         for (int i = 0; i < g_codec_resource->script_count; i++) { 
             if (g_codec_resource->scripts[i].entries != NULL) { 
-                free(g_codec_resource->scripts[i].entries); 
+                kmm_free(g_codec_resource->scripts[i].entries); 
             } 
         } 
         if (g_codec_resource->scripts != NULL) { 
-            free(g_codec_resource->scripts); 
+            kmm_free(g_codec_resource->scripts); 
         } 
-        free(g_codec_resource); 
+        kmm_free(g_codec_resource); 
         g_codec_resource = NULL; 
     } 
 }
@@ -285,9 +413,9 @@ void syu645b_free_resource(void)
 /** * Find script by ID */ 
 codec_script_t *syu645b_find_script(uint8_t script_id)
 { 
-    if (g_codec_resource == NULL) { 
-        return NULL; 
-    } 
+    if (g_codec_resource == NULL || g_codec_resource->scripts == NULL) {
+        return NULL;
+    }
     for (int i = 0; i < g_codec_resource->script_count; i++) { 
         if (g_codec_resource->scripts[i].id == script_id) { 
             return &g_codec_resource->scripts[i]; 
