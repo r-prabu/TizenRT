@@ -145,9 +145,9 @@ static int syu645b_apply_script(FAR struct syu645b_dev_s *priv, uint8_t script_i
 	uint16_t ret = 0;
 	FAR struct i2c_dev_s *dev = priv->i2c;
 	FAR struct i2c_config_s *syu645b_i2c_config = &(priv->lower->i2c_config);
-	uint8_t reg[SYU645B_REG_DATA_TYPE_MAX];
+	uint8_t reg[MAX_ENTRY_TYPE_SIZE];
 
-    codec_script_t *script = syu645b_find_script(script_id); 
+    codec_script_t *script = find_script(script_id); 
     if (script == NULL) { 
         return -EINVAL; 
     }
@@ -250,7 +250,7 @@ static void syu645b_setvolume(FAR struct syu645b_dev_s *priv)
 	uint16_t val = (int)(bound + SYU645B_HW_VOL_MIN_BOUND);
 	audvdbg("volume = %d val : %d mute=%u\n", priv->volume, val, priv->mute);
 
-	codec_script_t *script = syu645b_find_script(SCRIPT_ID_VOLUME);
+	codec_script_t *script = find_script(SCRIPT_ID_VOLUME);
 	if (script == NULL) {
 			audvdbg("Not finding the volume field \n");
         	return; 
@@ -1220,7 +1220,7 @@ FAR struct audio_lowerhalf_s *syu645b_initialize(FAR struct i2c_dev_s *i2c, FAR 
 	sem_init(&priv->devsem, 0, 1);
 	sq_init(&priv->pendq);
 
-	char *path  = "/mnt/syu645b_config.bin";
+	char *path  = "/mnt/codec.bin";
 	struct stat st;
 
 	ret = stat(path, &st);
@@ -1228,14 +1228,12 @@ FAR struct audio_lowerhalf_s *syu645b_initialize(FAR struct i2c_dev_s *i2c, FAR 
 		lldbg("invalid path : %s\n", path);
 		// return false;
 	}
-	// sleep(1000);
 	DEBUGASSERT(ret == OK);
-	ret = syu645b_load_resource("/mnt/syu645b_config.bin");
+	ret = load_resource("/mnt/codec.bin");
 	if(ret != OK){
 		audllwdbg("Failed to load the config \n");
 	}
 	lldbg("Founf the file %s \n", path);
-	// sleep(10000);
 	DEBUGASSERT(ret == OK);
 	/* Software reset.  This puts all SYU645B registers back in their
 	 * default state.
