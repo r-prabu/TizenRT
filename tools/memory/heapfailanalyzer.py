@@ -24,6 +24,7 @@ TizenRT Memory Allocation Failure Log Analyzer
 ----------------------------------------------
 This script parses TizenRT memory allocation failure logs and provides a summary
 of memory usage by PID and owner using a two-pass approach for better performance.
+Enhanced to handle logs with missing newlines, timestamps, and multiple entries per line.
 """
 
 import re
@@ -36,6 +37,59 @@ import time
 import csv
 from openpyxl import Workbook
 
+def preprocess_log_file(input_filename, output_filename=None):
+    """
+    Preprocesses the log file to fix missing newlines and normalize format
+    - Handles multiple log entries on a single line
+    - Preserves timestamps when available
+    - Adds missing timestamps when needed
+    - Creates a cleaner normalized format for easier parsing
+    
+    Args:
+        input_filename (str): Path to the input log file
+        output_filename (str, optional): Path to output the preprocessed log file
+                                         If None, a temporary file will be created
+    
+    Returns:
+        str: Path to the preprocessed file
+    """
+    if output_filename is None:
+        output_filename = input_filename + ".processed"
+    
+    try:
+        print(f"Preprocessing log file to handle inconsistent formatting...")
+        
+        with open(input_filename, 'r', encoding='utf-8', errors='replace') as infile, \
+             open(output_filename, 'w', encoding='utf-8') as outfile:
+            
+            # Read the whole file content
+            content = infile.read()
+            
+            # Split multiple entries that appear on the same line by inserting newlines
+            # Look for timestamp pattern [YYYY-MM-DD HH:MM:SS.mmm] inside a line
+            content = re.sub(r'(\]\s*[^\[\n]+)(\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+\])', r'\1\n\2', content)
+            
+            # Also split entries that have no timestamp but follow a pattern
+            content = re.sub(r'(\|[^|]*\|)(\s*0x[0-9a-f]+\s*\|)', r'\1\n[MISSING_TIMESTAMP] \2', content)
+            
+            # Fix potentially merged memory entries that should be on separate lines
+            # Also handle the case where timestamp is missing entirely
+            content = re.sub(r'(mm_manage_alloc_fail:.*?[^0-9a-f])(\s*mm_manage_alloc_fail:)', r'\1\n\2', content)
+            
+            # Add missing timestamps if needed for entries without any timestamp
+            content = re.sub(r'(^|\n)(?!\[)(\s*)(0x[0-9a-f]+\s*\|)', r'\1[MISSING_TIMESTAMP] \3', content)
+            content = re.sub(r'(^|\n)(?!\[)(\s*)(mm_manage_alloc_fail:)', r'\1[MISSING_TIMESTAMP] \3', content)
+            
+            # Write the processed content
+            outfile.write(content)
+        
+        print(f"Preprocessing complete.")
+        return output_filename
+        
+    except Exception as e:
+        print(f"Error preprocessing log file: {str(e)}")
+        return input_filename  # Return original filename if preprocessing fails
+
 def count_failures(filename):
     """
     First pass: Count failures and measure file stats for better progress estimation
@@ -46,7 +100,8 @@ def count_failures(filename):
     Returns:
         tuple: (num_failures, file_size, line_markers)
     """
-    failure_start_pattern = re.compile(r'\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\] mm_manage_alloc_fail: Allocation failed from user heap\.')
+    # Pattern that can handle missing or malformed timestamps and multiple entries per line
+    failure_start_pattern = re.compile(r'(?:\[([\d\-: .]+)\])?\s*mm_manage_alloc_fail: Allocation failed from user heap\.')
    
     failure_count = 0
     file_size = os.path.getsize(filename)
@@ -63,23 +118,36 @@ def count_failures(filename):
             last_progress = 0
             buffer_size = 4 * 1024 * 1024  # 4MB buffer
            
+            # Using line-based processing for the first pass to count failures
+            buffer = ""
             for chunk in iter(lambda: f.read(buffer_size), ''):
                 chunk_size = len(chunk.encode('utf-8'))  # Get encoded size
                 bytes_read += chunk_size
+               
+                # Add current chunk to buffer
+                buffer += chunk
+                
+                # Count failure starts in this buffer
+                # This will find ALL matches in the buffer, even if they're on the same line
+                matches = list(failure_start_pattern.finditer(buffer))
+                failure_count += len(matches)
+                
+                # Store positions of failures for progress tracking
+                for match in matches:
+                    if failure_count % 10 == 0:
+                        position = bytes_read - len(buffer) + match.start()
+                        failure_positions.append((failure_count, position))
+                
+                # Keep only the last part of the buffer to avoid missing matches that span chunks
+                last_newline = buffer.rfind('\n')
+                if last_newline > 0:
+                    buffer = buffer[last_newline:]
                
                 # Update progress bar
                 progress = int(50 * bytes_read / file_size)
                 if progress > last_progress:
                     print(f"[{'#' * progress}{' ' * (50 - progress)}] {int(100 * bytes_read / file_size)}%", end="\r")
                     last_progress = progress
-               
-                # Count failure starts in this chunk
-                for match in failure_start_pattern.finditer(chunk):
-                    failure_count += 1
-                    # Store position of every 10th failure for progress tracking
-                    if failure_count % 10 == 0:
-                        position = bytes_read - chunk_size + match.start()
-                        failure_positions.append((failure_count, position))
        
         print(f"\nFound {failure_count} memory allocation failures.")
        
@@ -95,7 +163,7 @@ def count_failures(filename):
 def parse_log_file(filename, total_failures, file_size, failure_positions):
     """
     Second pass: Parse the log file and extract memory allocation failure information
-    with better progress tracking
+    with better progress tracking. Now handles multiple entries per line.
    
     Args:
         filename (str): Path to the log file
@@ -104,9 +172,9 @@ def parse_log_file(filename, total_failures, file_size, failure_positions):
         failure_positions (list): Positions of failures for tracking
        
     Returns:
-        dict: Summary dictionary (eliminates need for a separate summary generation step)
+        dict: Summary dictionary
     """
-    # Initialize summary directly rather than storing all failures
+    # Initialize summary 
     summary = {
         'total_failures': total_failures,
         'by_pid': defaultdict(lambda: {'count': 0, 'total_allocated': 0}),
@@ -120,20 +188,21 @@ def parse_log_file(filename, total_failures, file_size, failure_positions):
         'top_owners': []  # Updated to store top owners
     }
    
-    # Precompile regex patterns for better performance
-    failure_start_pattern = re.compile(r'\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\] mm_manage_alloc_fail: Allocation failed from user heap\.')
-    size_pattern = re.compile(r'\[.*\] mm_manage_alloc_fail:  - requested size (\d+)')
-    caller_pattern = re.compile(r'\[.*\] mm_manage_alloc_fail:  - caller address = (0x[0-9a-f]+)')
-    largest_free_pattern = re.compile(r'\[.*\] mm_manage_alloc_fail:  - largest free size : (\d+)')
-    total_free_pattern = re.compile(r'\[.*\] mm_manage_alloc_fail:  - total free size   : (\d+)')
-    header_pattern = re.compile(r'\[.*\]   MemAddr \|   Size   \| Status \|    Owner   \|  Pid  \|')
-    entry_pattern = re.compile(r'\[.*\] (0x[0-9a-f]+) \|[ ]*(\d+) \|[ ]*([A-Z])[ ]*\| (0x[ 0-9a-f]+) \|[ ]*(\d+)(?:\(([A-Z])\))?\s*\|')
+    # Precompile regex patterns - enhanced for better matching across lines
+    failure_start_pattern = re.compile(r'(?:\[([\d\-: .]+)\])?\s*mm_manage_alloc_fail: Allocation failed from user heap\.')
+    size_pattern = re.compile(r'(?:\[.*?\])?\s*mm_manage_alloc_fail:  - requested size (\d+)')
+    caller_pattern = re.compile(r'(?:\[.*?\])?\s*mm_manage_alloc_fail:  - caller address = (0x[0-9a-f]+)')
+    largest_free_pattern = re.compile(r'(?:\[.*?\])?\s*mm_manage_alloc_fail:  - largest free size : (\d+)')
+    total_free_pattern = re.compile(r'(?:\[.*?\])?\s*mm_manage_alloc_fail:  - total free size   : (\d+)')
+    header_pattern = re.compile(r'(?:\[.*?\])?\s*MemAddr \|   Size   \| Status \|    Owner   \|  Pid  \|')
+    entry_pattern = re.compile(r'(?:\[.*?\])?\s*(0x[0-9a-f]+)\s*\|\s*(\d+)\s*\|\s*([A-Z])\s*\|\s*(0x[0-9a-f ]+)\s*\|\s*(\d+)(?:\(([A-Z])\))?\s*\|')
    
     # Initialize processing variables
     current_failure = None
     heap_entries = []
     failures_processed = 0
     next_marker_idx = 0
+    in_table = False
    
     # Create failure marker map for better progress tracking
     failure_markers = {}
@@ -149,119 +218,79 @@ def parse_log_file(filename, total_failures, file_size, failure_positions):
         last_update_time = start_time
         bytes_read = 0
         last_progress = 0
-       
+        
+        # Read the file content
         with open(filename, 'r', encoding='utf-8', errors='replace') as f:
-            # Process file line by line for accurate parsing
-            for line in f:
-                bytes_read += len(line.encode('utf-8'))
-               
-                # Update progress based on failures or bytes processed
-                if failure_positions and next_marker_idx < len(failure_positions):
-                    next_count, next_pos = failure_positions[next_marker_idx]
-                    if failures_processed >= next_count:
-                        progress = int(50 * failures_processed / total_failures)
-                        next_marker_idx += 1
-                    else:
-                        progress = int(50 * failures_processed / total_failures)
-                else:
-                    # Fall back to file position if markers exhausted
-                    progress = int(50 * bytes_read / file_size)
-               
-                # Update progress display
-                current_time = time.time()
-                if progress > last_progress or current_time - last_update_time > 1.0:
-                    elapsed_time = current_time - start_time
-                   
-                    # Calculate ETA based on progress
-                    if failures_processed > 0:
-                        estimated_total = (elapsed_time / (failures_processed / total_failures))
-                        remaining_time = max(0, estimated_total - elapsed_time)
-                        eta_text = f"ETA: {format_time(remaining_time)}"
-                    else:
-                        eta_text = "Calculating ETA..."
-                   
-                    print(f"[{'#' * progress}{' ' * (50 - progress)}] {failures_processed}/{total_failures} failures ({int(100 * failures_processed / total_failures)}%) - {eta_text}", end="\r")
-                    last_progress = progress
-                    last_update_time = current_time
-               
-                # Process the line
-                # Check for the start of a new allocation failure
-                failure_match = failure_start_pattern.match(line)
-                if failure_match:
-                    # If we already have a current failure, finalize it (but don't store it)
-                    if current_failure:
-                        failures_processed += 1
-                        # Just update the requested_size info in summary
-                        if current_failure.get('requested_size'):
-                            summary['total_requested_size'] += current_failure['requested_size']
-                            summary['requested_sizes'].append(current_failure['requested_size'])
-                   
-                    timestamp = failure_match.group(1)
-                    # Create a new current failure
-                    current_failure = {
-                        'timestamp': timestamp,
-                        'requested_size': None,
-                        'caller_address': None,
-                        'largest_free_size': None,
-                        'total_free_size': None
-                    }
-                    continue
-               
-                # If we're currently processing a failure, check for details
-                if current_failure:
-                    # Check for requested size
-                    size_match = size_pattern.match(line)
-                    if size_match:
-                        current_failure['requested_size'] = int(size_match.group(1))
-                        continue
-                   
-                    # Check for caller address
-                    caller_match = caller_pattern.match(line)
-                    if caller_match:
-                        current_failure['caller_address'] = caller_match.group(1)
-                        continue
-                   
-                    # Check for largest free size
-                    largest_free_match = largest_free_pattern.match(line)
-                    if largest_free_match:
-                        current_failure['largest_free_size'] = int(largest_free_match.group(1))
-                        continue
-                   
-                    # Check for total free size
-                    total_free_match = total_free_pattern.match(line)
-                    if total_free_match:
-                        current_failure['total_free_size'] = int(total_free_match.group(1))
-                        continue
-               
-                # Check for memory table header
-                if header_pattern.match(line):
-                    # Clear heap entries for a new table
-                    heap_entries = []
-                    continue
-               
-                # Check for memory entries
-                entry_match = entry_pattern.match(line)
-                if entry_match:
+            content = f.read()
+            
+        # First find all failure start positions in the content
+        failure_starts = []
+        for match in failure_start_pattern.finditer(content):
+            timestamp = match.group(1) if match.group(1) else "MISSING_TIMESTAMP"
+            position = match.start()
+            failure_starts.append((position, timestamp))
+        
+        # Sort by position to ensure we process them in order
+        failure_starts.sort()
+        
+        # Add an end marker
+        failure_starts.append((len(content), None))
+        
+        # Process each failure section
+        for i in range(len(failure_starts) - 1):
+            start_pos, timestamp = failure_starts[i]
+            end_pos = failure_starts[i+1][0]
+            
+            # Get failure section content
+            section = content[start_pos:end_pos]
+            
+            # Process this failure
+            current_failure = {
+                'timestamp': timestamp,
+                'requested_size': None,
+                'caller_address': None,
+                'largest_free_size': None,
+                'total_free_size': None
+            }
+            
+            # Extract information from this section
+            size_match = size_pattern.search(section)
+            if size_match:
+                current_failure['requested_size'] = int(size_match.group(1))
+            
+            caller_match = caller_pattern.search(section)
+            if caller_match:
+                current_failure['caller_address'] = caller_match.group(1)
+            
+            largest_free_match = largest_free_pattern.search(section)
+            if largest_free_match:
+                current_failure['largest_free_size'] = int(largest_free_match.group(1))
+            
+            total_free_match = total_free_pattern.search(section)
+            if total_free_match:
+                current_failure['total_free_size'] = int(total_free_match.group(1))
+            
+            # Find memory table entries in this section
+            if header_pattern.search(section):
+                # Parse all entries in this section
+                for entry_match in entry_pattern.finditer(section):
                     address = entry_match.group(1)
                     size = int(entry_match.group(2))
                     status = entry_match.group(3)
                     owner = entry_match.group(4).strip()
                     pid = entry_match.group(5)
                     special = entry_match.group(6) if entry_match.group(6) else ""
-                   
-                    # Update summary directly instead of storing all entries
-                    # Update PID statistics
+                    
+                    # Update summary directly
                     summary['by_pid'][pid]['count'] += 1
                     summary['by_pid'][pid]['total_allocated'] += size
-                   
-                    # Update owner statistics
+                    
                     summary['by_owner'][owner]['count'] += 1
                     summary['by_owner'][owner]['total_allocated'] += size
                     summary['by_owner'][owner]['pids'].add(pid)
-                   
-                    # Update total allocated memory
+                    
                     summary['total_allocated_memory'] += size
-                   
+                    
                     # Check for largest allocation
                     if size > summary['largest_allocation']['size']:
                         summary['largest_allocation'] = {
@@ -270,17 +299,37 @@ def parse_log_file(filename, total_failures, file_size, failure_positions):
                             'owner': owner,
                             'address': address
                         }
-       
-        # Don't forget to process the last failure if there is one
-        if current_failure:
-            failures_processed += 1
+            
+            # Update requested sizes for this failure
             if current_failure.get('requested_size'):
                 summary['total_requested_size'] += current_failure['requested_size']
                 summary['requested_sizes'].append(current_failure['requested_size'])
+            
+            # Calculate progress and update display
+            failures_processed += 1
+            progress = int(50 * failures_processed / total_failures) if total_failures > 0 else 0
+            current_time = time.time()
+            
+            if progress > last_progress or current_time - last_update_time > 1.0:
+                elapsed_time = current_time - start_time
+                
+                # Calculate ETA
+                if failures_processed > 0 and total_failures > 0:
+                    estimated_total = (elapsed_time / (failures_processed / total_failures))
+                    remaining_time = max(0, estimated_total - elapsed_time)
+                    eta_text = f"ETA: {format_time(remaining_time)}"
+                else:
+                    eta_text = "Calculating ETA..."
+                
+                print(f"[{'#' * progress}{' ' * (50 - progress)}] {failures_processed}/{total_failures} failures ({int(100 * failures_processed / total_failures)}%) - {eta_text}", end="\r")
+                last_progress = progress
+                last_update_time = current_time
        
         # Calculate average requested size
         if summary['requested_sizes']:
             summary['average_requested_size'] = sum(summary['requested_sizes']) / len(summary['requested_sizes'])
+        else:
+            summary['average_requested_size'] = 0
        
         # Find top 5 PIDs and owners by memory allocation
         sorted_pids = sorted(summary['by_pid'].items(), key=lambda x: x[1]['total_allocated'], reverse=True)
@@ -312,6 +361,8 @@ def parse_log_file(filename, total_failures, file_size, failure_positions):
        
     except Exception as e:
         print(f"\nError processing log file: {str(e)}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
    
     return summary
@@ -340,13 +391,12 @@ def format_time(seconds):
         minutes = int((seconds % 3600) // 60)
         return f"{hours}h {minutes}m"
 
-def print_summary(summary, detailed=False):
+def print_summary(summary):
     """
     Print a formatted summary of memory allocation failures
    
     Args:
         summary (dict): Summary statistics
-        detailed (bool): Whether to print detailed information
     """
     print("\n===== MEMORY ALLOCATION FAILURE SUMMARY =====\n")
     print(f"Total failures analyzed: {summary['total_failures']}")
@@ -473,9 +523,7 @@ def export_to_excel(summary, filename):
 def main():
     parser = argparse.ArgumentParser(description='Analyze TizenRT memory allocation failure logs')
     parser.add_argument('logfile', help='Path to the log file')
-    parser.add_argument('--export', help='Export summary to CSV file')
-    parser.add_argument('--detailed', action='store_true', help='Print detailed information')
-    parser.add_argument('--skip-first-pass', action='store_true', help='Skip first pass analysis (faster but less accurate progress)')
+    parser.add_argument('--export', help='Export summary to excel file')
     args = parser.parse_args()
    
     print(f"\nTizenRT Memory Allocation Failure Log Analyzer")
@@ -490,24 +538,30 @@ def main():
         sys.exit(1)
    
     start_time = time.time()
+    
+    # Always preprocess the log file
+    processed_file = preprocess_log_file(args.logfile)
    
     # First pass: count failures and gather file metrics
-    if not args.skip_first_pass:
-        total_failures, file_size, failure_positions = count_failures(args.logfile)
-    else:
-        print("Skipping first pass analysis...")
-        total_failures = 0  # Will be counted in second pass
-        failure_positions = []
-   
+    total_failures, file_size, failure_positions = count_failures(processed_file)
+
     # Second pass: process failures and generate summary
-    summary = parse_log_file(args.logfile, total_failures, file_size, failure_positions)
+    summary = parse_log_file(processed_file, total_failures, file_size, failure_positions)
    
     # Print summary
-    print_summary(summary, args.detailed)
+    print_summary(summary)
    
     # Export if requested
     if args.export:
         export_to_excel(summary, args.export)
+   
+    # Clean up processed file if it was created
+    if processed_file != args.logfile:
+        try:
+            os.remove(processed_file)
+            print(f"Cleaned up temporary processed file.")
+        except:
+            print(f"Note: Could not remove temporary file: {processed_file}")
    
     total_time = time.time() - start_time
     print(f"\nTotal analysis time: {format_time(total_time)}")
@@ -515,4 +569,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
