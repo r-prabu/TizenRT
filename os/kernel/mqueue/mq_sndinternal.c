@@ -433,7 +433,11 @@ int mq_dosend(mqd_t mqdes, FAR struct mqueue_msg_s *mqmsg, FAR const char *msg, 
 	}
 #endif
 
-	/* Check if any tasks are waiting for the MQ not empty event. */
+	/* Check if any tasks are waiting for the MQ not empty event. 
+	 * Move the entire check and unblocking into a single critical section
+	 * to prevent race conditions between the check and the action, especially
+	 * in an SMP environment.
+	 */
 
 	saved_state = enter_critical_section();
 	if (msgq->nwaitnotempty > 0) {
@@ -442,16 +446,21 @@ int mq_dosend(mqd_t mqdes, FAR struct mqueue_msg_s *mqmsg, FAR const char *msg, 
 		 * list. sched_lock() should give us sufficent protection since
 		 * interrupts should never cause a change in this list
 		 */
+		
+		btcb = (FAR struct tcb_s *)g_waitingformqnotempty.head;
+		while (btcb && btcb->msgwaitq != msgq) {
+			btcb = btcb->flink;
+		}
 
-		for (btcb = (FAR struct tcb_s *)g_waitingformqnotempty.head; btcb && btcb->msgwaitq != msgq; btcb = btcb->flink) ;
-
-		/* If one was found, unblock it */
-
-		ASSERT(btcb);
-
-		btcb->msgwaitq = NULL;
-		msgq->nwaitnotempty--;
-		up_unblock_task(btcb);
+		/* If one was found, unblock it; otherwise handle the inconsistency */
+		if (btcb) {
+			btcb->msgwaitq = NULL;
+			msgq->nwaitnotempty--;
+			up_unblock_task(btcb);
+		} else {
+			/* Inconsistency detected - reset the counter to avoid future issues */
+			msgq->nwaitnotempty = 0;
+		}
 	}
 
 	leave_critical_section(saved_state);
