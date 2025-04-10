@@ -80,6 +80,7 @@
 #include "signal/signal.h"
 #endif
 #include "task/task.h"
+#include "mqueue/mqueue.h"
 
 #ifdef CONFIG_TASK_MONITOR
 #include "task_monitor/task_monitor_internal.h"
@@ -205,6 +206,32 @@ int task_terminate(pid_t pid, bool nonblocking)
 
 	tasklist = TLIST_HEAD(dtcb->task_state);
 #endif
+	
+	/* Handle message queue related cleanup.
+	 * We need to check for both TSTATE_WAIT_MQNOTEMPTY and TSTATE_WAIT_MQNOTFULL
+	 * states. This ensures we properly handle cases where a thread is being
+	 * terminated while waiting on a message queue operation.
+	 */
+	if (dtcb->msgwaitq != NULL) {
+		/* Get a reference to the message queue the task was waiting on */
+		FAR struct mqueue_inode_s *msgq = dtcb->msgwaitq;
+
+		/* Check the specific wait state and update counters accordingly */
+		if (dtcb->task_state == TSTATE_WAIT_MQNOTEMPTY) {
+			/* Task was waiting for messages - decrement the waiter count */
+			if (msgq->nwaitnotempty > 0) {
+				msgq->nwaitnotempty--;
+			}
+		} else if (dtcb->task_state == TSTATE_WAIT_MQNOTFULL) {
+			/* Task was waiting to send messages - decrement the waiter count */
+			if (msgq->nwaitnotfull > 0) {
+				msgq->nwaitnotfull--;
+			}
+		}
+
+		/* Clear the message queue reference in the TCB */
+		dtcb->msgwaitq = NULL;
+	}
 
 	/* Remove the task from the task list */
 
