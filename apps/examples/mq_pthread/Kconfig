@@ -1,0 +1,18 @@
+config MQ_PTHREAD_TEST
+	bool "Message Queue pthread cancel test"
+	default n
+	depends on !BUILD_PROTECTED
+	---help---
+		Enable the Message Queue pthread cancel test
+
+if MQ_PTHREAD_TEST
+
+config MQ_PTHREAD_TEST_PRIORITY
+	int "Message Queue pthread cancel test task priority"
+	default 100
+
+config MQ_PTHREAD_TEST_STACKSIZE
+	int "Message Queue pthread cancel test task stack size"
+	default 4096
+
+endif
